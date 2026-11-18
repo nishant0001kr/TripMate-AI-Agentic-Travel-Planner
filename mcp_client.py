@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env", override=True)
 
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
@@ -65,10 +66,13 @@ def _subprocess_env(**updates: str | None) -> dict[str, str]:
 # LLM
 # =========================================================
 
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    api_key=_require_env("GROQ_API_KEY", GROQ_API_KEY),
-)
+@lru_cache(maxsize=1)
+def get_llm() -> ChatGroq:
+    """Create the model lazily so the web UI can start before keys are added."""
+    return ChatGroq(
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+        api_key=_require_env("GROQ_API_KEY", GROQ_API_KEY),
+    )
 
 
 # =========================================================
@@ -308,7 +312,7 @@ Return only the destination name.
 Do not add any explanation.
 """
 
-    response = llm.invoke(prompt)
+    response = get_llm().invoke(prompt)
 
     destination = str(
         response.content

@@ -1,8 +1,9 @@
 import os
 import certifi
+from functools import lru_cache
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
 
@@ -14,6 +15,7 @@ import json
 import psycopg
 from psycopg.rows import dict_row
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.types import Command, interrupt
 from langchain_core.messages import (
@@ -50,18 +52,22 @@ def get_database_url():
     return database_url
 
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY is missing. Please add it to your .env file.")
-
 # =========================
 # LLM - original model kept
 # =========================
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    api_key=GROQ_API_KEY,
-)
+@lru_cache(maxsize=1)
+def get_llm() -> ChatGroq:
+    """Create the LLM only when an agent request actually needs it."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GROQ_API_KEY is missing. Copy .env.example to .env and add your key."
+        )
+
+    return ChatGroq(
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+        api_key=api_key,
+    )
 
 # =========================
 # State - original fields kept, new control fields added
@@ -114,7 +120,7 @@ AGENT_ORDER = [
 
 
 def _llm_text(system_prompt: str, user_prompt: str) -> str:
-    response = llm.invoke(
+    response = get_llm().invoke(
         [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
@@ -336,7 +342,7 @@ def flight_agent(state: TravelState):
             airline_data=str(airlines)[:3000],
         )
 
-        response = llm.invoke(
+        response = get_llm().invoke(
             [
                 SystemMessage(content="You are an expert travel flight planner."),
                 HumanMessage(content=prompt),
@@ -474,7 +480,7 @@ Return:
 If exact live prices are unavailable, clearly label estimates as approximate.
 """
 
-    response = llm.invoke(
+    response = get_llm().invoke(
         [
             SystemMessage(content="You are a practical travel budget analyst."),
             HumanMessage(content=prompt),
@@ -517,7 +523,7 @@ Make the itinerary practical, budget-aware, and easy to follow.
 Create a clear draft that is ready for human review.
 """
 
-    response = llm.invoke(
+    response = get_llm().invoke(
         [
             SystemMessage(content="You are an expert travel planner."),
             HumanMessage(content=prompt),
@@ -624,7 +630,7 @@ Important:
 - Incorporate the human feedback when revision was requested.
 """
 
-    response = llm.invoke(
+    response = get_llm().invoke(
         [
             SystemMessage(
                 content="You are a professional AI travel booking assistant."
@@ -719,14 +725,21 @@ graph.add_edge("guardrail_blocked", END)
 # =========================
 # PostgreSQL Checkpointer - original persistence kept
 # =========================
-DATABASE_URL = get_database_url()
-_conn = psycopg.connect(
-    DATABASE_URL,
-    autocommit=True,
-    row_factory=dict_row,
-)
-checkpointer = PostgresSaver(_conn)
-checkpointer.setup()
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    DATABASE_URL = get_database_url()
+    _conn = psycopg.connect(
+        DATABASE_URL,
+        autocommit=True,
+        row_factory=dict_row,
+    )
+    checkpointer = PostgresSaver(_conn)
+    checkpointer.setup()
+else:
+    # Local development works without provisioning PostgreSQL. Threads persist
+    # only until the process exits; set DATABASE_URL for durable storage.
+    checkpointer = InMemorySaver()
 
 travel_graph = graph.compile(checkpointer=checkpointer)
 
