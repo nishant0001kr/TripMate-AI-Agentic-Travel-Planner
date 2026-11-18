@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import traceback
 
@@ -135,6 +136,16 @@ async def approve_travel_plan(request_data: ApprovalRequest):
 
 @app.get("/health")
 async def health_check():
+    integrations = {
+        "groq": bool(os.getenv("GROQ_API_KEY")),
+        "tavily": bool(os.getenv("TAVILY_API_KEY")),
+        "aviationstack": bool(
+            os.getenv("AVIATION_STACK_API_KEY")
+            or os.getenv("AVIATIONSTACK_API_KEY")
+        ),
+        "openweather": bool(os.getenv("OPENWEATHER_API_KEY")),
+    }
+
     return {
         "status": "ok",
         "message": "TripMate AI API is running",
@@ -143,6 +154,10 @@ async def health_check():
             "input_guardrail",
             "human_in_the_loop",
         ],
+        "integrations": integrations,
+        "persistence": (
+            "postgresql" if os.getenv("DATABASE_URL") else "memory"
+        ),
     }
 
 

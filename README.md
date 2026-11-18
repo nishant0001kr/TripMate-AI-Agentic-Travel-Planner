@@ -6,6 +6,35 @@ request into a practical itinerary by coordinating specialist agents, validating
 the request with guardrails, and pausing for human approval before finalizing the
 plan.
 
+## What the application does
+
+A user describes a trip in ordinary language—for example, origin, destination,
+dates, budget, and interests. TripMate validates the request, selects relevant
+specialists, gathers available live travel context, creates a budget-aware draft,
+and pauses for user approval. The user can approve the draft or provide revision
+feedback before the graph produces the final plan.
+
+This is a working workflow application rather than a single chatbot prompt: every
+request has explicit state, routing, external-tool boundaries, and a resumable
+human-review checkpoint.
+
+## Project provenance and my implementation
+
+This repository is a portfolio adaptation of the Apache-2.0-licensed
+[`entbappy/Multi-Agent-System-using-LangGraph-MCP-Supervisor-Guardrails-HITL`](https://github.com/entbappy/Multi-Agent-System-using-LangGraph-MCP-Supervisor-Guardrails-HITL).
+It is not presented as an entirely from-scratch codebase. The implementation work
+in this repository focuses on making the project safer, current, and easier to
+evaluate locally:
+
+- migrated the retired Groq Llama model to `openai/gpt-oss-120b`;
+- removed mandatory startup-time API-key validation;
+- added an in-memory LangGraph checkpointer when PostgreSQL is not configured;
+- made `.env` configuration precedence deterministic across the app and MCP server;
+- added a configuration-aware `/health` response without exposing secret values;
+- added automated application smoke tests;
+- added secure configuration templates and a complete Windows setup path;
+- documented architecture, failure modes, API contracts, and interview decisions.
+
 ## Why this project stands out
 
 - **Supervisor architecture** dynamically selects only the agents needed for a request.
@@ -64,6 +93,25 @@ and optional feedback.
 
 ## Run locally on Windows
 
+### Two-minute evaluator setup
+
+For the core agent workflow, a reviewer only needs Python and a Groq key:
+
+```powershell
+git clone https://github.com/nishant0001kr/TripMate-AI-Agentic-Travel-Planner.git
+cd TripMate-AI-Agentic-Travel-Planner
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+# Add GROQ_API_KEY to .env, then run:
+python app.py
+```
+
+Open `http://127.0.0.1:8000`. Optional provider keys enhance the answer with live
+data but are not required to inspect the UI, health endpoint, routing, or HITL
+flow.
+
 ### 1. Create the environment
 
 ```powershell
@@ -106,6 +154,26 @@ python app.py
 ```
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+### 4. Verify the installation
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+python -m unittest discover -s tests -v
+```
+
+The health response reports which integrations are configured as booleans and
+whether state is using `memory` or `postgresql`. It never returns API-key values.
+
+## Behavior when an integration is missing
+
+| Missing configuration | Behavior |
+|---|---|
+| `GROQ_API_KEY` | UI and health endpoint start; planning requests return a readable configuration error |
+| `TAVILY_API_KEY` | Hotel agent uses clearly labelled general accommodation guidance |
+| `AVIATION_STACK_API_KEY` or `uvx` | Flight agent reports live aviation data as unavailable |
+| `OPENWEATHER_API_KEY` | Weather agent uses general seasonal guidance and recommends forecast verification |
+| `DATABASE_URL` | Threads use process-local memory and reset when the server restarts |
 
 ## Example demo
 
