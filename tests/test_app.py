@@ -15,6 +15,7 @@ class AppSmokeTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("TripMate", response.text)
+        self.assertIn("Nishant Kumar", response.text)
 
     def test_health_reports_features_without_exposing_secrets(self):
         response = self.client.get("/health")

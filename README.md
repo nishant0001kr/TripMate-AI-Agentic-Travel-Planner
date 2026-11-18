@@ -1,5 +1,7 @@
 # TripMate AI
 
+**Portfolio implementation by [Nishant Kumar](https://github.com/nishant0001kr)**
+
 An agentic travel-planning application built with **LangGraph**, **Model Context
 Protocol (MCP)**, **FastAPI**, and **Groq**. TripMate converts a natural-language
 request into a practical itinerary by coordinating specialist agents, validating
